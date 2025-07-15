@@ -1,23 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   ScrollView,
+  TouchableOpacity,
   RefreshControl,
-  Alert,
   StatusBar,
-  Dimensions,
+  Image,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import Icon from 'react-native-vector-icons/MaterialIcons';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { PMAColors } from '../theme';
 import { useAuth } from '../contexts/AuthContext';
 import { useWallet } from '../contexts/WalletContext';
-import { WalletService } from '../services/WalletService';
-import { Transaction } from '../types';
+import * as Haptics from 'expo-haptics';
 
-const { width } = Dimensions.get('window');
+// const { width } = Dimensions.get('window');
 
 interface HomeScreenProps {
   navigation: any;
@@ -26,21 +27,15 @@ interface HomeScreenProps {
 const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   const { user } = useAuth();
   const { wallet, refreshWallet, transactions } = useWallet();
+  
   const [refreshing, setRefreshing] = useState(false);
-  const [balanceVisible, setBalanceVisible] = useState(true);
 
-  useEffect(() => {
-    if (wallet) {
-      refreshWallet();
-    }
-  }, []);
-
-  const handleRefresh = async () => {
+  const onRefresh = async () => {
     setRefreshing(true);
     try {
       await refreshWallet();
     } catch (error) {
-      Alert.alert('Error', 'Failed to refresh wallet data');
+      console.error('Error refreshing wallet:', error);
     } finally {
       setRefreshing(false);
     }
@@ -51,213 +46,292 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     return wallet.balance.USDT + wallet.balance.USDC + wallet.balance.AECoin;
   };
 
+  const formatBalance = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  };
+
+  const formatAddress = (address: string) => {
+    return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
+  };
+
   const getRecentTransactions = () => {
     return transactions.slice(0, 3);
   };
 
-  const formatCurrency = (amount: number, currency: string) => {
-    return `${amount.toFixed(2)} ${currency}`;
-  };
-
-  const handleQuickAction = (action: string) => {
-    switch (action) {
-      case 'send':
-        navigation.navigate('Send');
-        break;
-      case 'receive':
-        navigation.navigate('Receive');
-        break;
-      case 'scan':
-        navigation.navigate('Scan');
-        break;
-      case 'topup':
-        navigation.navigate('TopUp');
-        break;
-      default:
-        break;
-    }
-  };
-
-  const renderBalanceCard = () => (
-    <LinearGradient
-      colors={[PMAColors.primary, PMAColors.accent]}
-      style={styles.balanceCard}
-    >
-      <View style={styles.balanceHeader}>
-        <Text style={styles.balanceTitle}>Total Balance</Text>
-        <TouchableOpacity
-          onPress={() => setBalanceVisible(!balanceVisible)}
-          style={styles.eyeButton}
-        >
-          <Text style={styles.eyeIcon}>{balanceVisible ? '👁️' : '👁️‍🗨️'}</Text>
-        </TouchableOpacity>
-      </View>
-      
-      <Text style={styles.balanceAmount}>
-        {balanceVisible ? `$${getTotalBalance().toFixed(2)}` : '****'}
-      </Text>
-      
-      <View style={styles.walletInfo}>
-        <Text style={styles.walletLabel}>Wallet Address</Text>
-        <Text style={styles.walletAddress}>
-          {wallet ? WalletService.formatAddress(wallet.address) : 'Loading...'}
-        </Text>
-      </View>
-      
-      <View style={styles.currencyBalances}>
-        <View style={styles.currencyItem}>
-          <Text style={styles.currencyLabel}>USDT</Text>
-          <Text style={styles.currencyValue}>
-            {balanceVisible ? formatCurrency(wallet?.balance.USDT || 0, 'USDT') : '****'}
-          </Text>
-        </View>
-        <View style={styles.currencyItem}>
-          <Text style={styles.currencyLabel}>USDC</Text>
-          <Text style={styles.currencyValue}>
-            {balanceVisible ? formatCurrency(wallet?.balance.USDC || 0, 'USDC') : '****'}
-          </Text>
-        </View>
-        <View style={styles.currencyItem}>
-          <Text style={styles.currencyLabel}>AE Coin</Text>
-          <Text style={styles.currencyValue}>
-            {balanceVisible ? formatCurrency(wallet?.balance.AECoin || 0, 'AE') : '****'}
-          </Text>
-        </View>
-      </View>
-    </LinearGradient>
-  );
-
-  const renderQuickActions = () => (
-    <View style={styles.quickActionsContainer}>
-      <Text style={styles.sectionTitle}>Quick Actions</Text>
-      <View style={styles.quickActions}>
-        <TouchableOpacity
-          style={styles.quickAction}
-          onPress={() => handleQuickAction('send')}
-        >
-          <View style={styles.quickActionIcon}>
-            <Text style={styles.quickActionIconText}>📤</Text>
-          </View>
-          <Text style={styles.quickActionText}>Send</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={styles.quickAction}
-          onPress={() => handleQuickAction('receive')}
-        >
-          <View style={styles.quickActionIcon}>
-            <Text style={styles.quickActionIconText}>📥</Text>
-          </View>
-          <Text style={styles.quickActionText}>Receive</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={styles.quickAction}
-          onPress={() => handleQuickAction('scan')}
-        >
-          <View style={styles.quickActionIcon}>
-            <Text style={styles.quickActionIconText}>📱</Text>
-          </View>
-          <Text style={styles.quickActionText}>Scan</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={styles.quickAction}
-          onPress={() => handleQuickAction('topup')}
-        >
-          <View style={styles.quickActionIcon}>
-            <Text style={styles.quickActionIconText}>💰</Text>
-          </View>
-          <Text style={styles.quickActionText}>Top Up</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-
-  const renderRecentTransactions = () => (
-    <View style={styles.transactionsContainer}>
-      <View style={styles.transactionHeader}>
-        <Text style={styles.sectionTitle}>Recent Transactions</Text>
-        <TouchableOpacity onPress={() => navigation.navigate('Transactions')}>
-          <Text style={styles.seeAllText}>See All</Text>
-        </TouchableOpacity>
-      </View>
-      
-      {getRecentTransactions().length === 0 ? (
-        <View style={styles.noTransactions}>
-          <Text style={styles.noTransactionsText}>No transactions yet</Text>
-          <Text style={styles.noTransactionsSubtext}>
-            Start by sending or receiving funds
-          </Text>
-        </View>
-      ) : (
-        getRecentTransactions().map((transaction, index) => (
-          <TouchableOpacity
-            key={transaction.id}
-            style={styles.transactionItem}
-            onPress={() => navigation.navigate('Transactions')}
-          >
-            <View style={styles.transactionIcon}>
-              <Text style={styles.transactionIconText}>
-                {transaction.type === 'send' ? '📤' : '📥'}
-              </Text>
-            </View>
-            <View style={styles.transactionInfo}>
-              <Text style={styles.transactionTitle}>
-                {transaction.type === 'send' ? 'Sent' : 'Received'}
-              </Text>
-              <Text style={styles.transactionAddress}>
-                {transaction.type === 'send' 
-                  ? WalletService.formatAddress(transaction.toAddress)
-                  : WalletService.formatAddress(transaction.fromAddress)
-                }
-              </Text>
-            </View>
-            <View style={styles.transactionAmount}>
-              <Text style={[
-                styles.transactionAmountText,
-                transaction.type === 'send' ? styles.sendAmount : styles.receiveAmount
-              ]}>
-                {transaction.type === 'send' ? '-' : '+'}
-                {formatCurrency(transaction.amount, transaction.currency)}
-              </Text>
-              <Text style={styles.transactionStatus}>
-                {transaction.status}
-              </Text>
-            </View>
-          </TouchableOpacity>
-        ))
-      )}
-    </View>
-  );
-
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={PMAColors.primary} />
       
       <ScrollView
         style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[PMAColors.primary]}
+            tintColor={PMAColors.primary}
+          />
         }
       >
-        <View style={styles.header}>
-          <Text style={styles.greeting}>
-            Welcome back, {user?.firstName || 'User'}!
+        {/* Header */}
+        <LinearGradient
+          colors={[PMAColors.primary, PMAColors.accent]}
+          style={styles.header}
+        >
+          {/* PMA Logo Section */}
+          <View style={styles.logoSection}>
+            <View style={styles.logoContainer}>
+              <Image
+                source={require('../../assets/Pma.png')}
+                style={styles.logoImage}
+                resizeMode="contain"
+              />
+            </View>
+            <View style={styles.brandInfo}>
+              <Text style={styles.brandName}>PMA Digital Banking</Text>
+              <Text style={styles.brandSubtitle}>Palestine Monetary Authority</Text>
+            </View>
+          </View>
+
+          <View style={styles.headerContent}>
+            <View style={styles.userInfo}>
+              <Text style={styles.welcomeText}>Welcome back,</Text>
+              <Text style={styles.userName}>{user?.firstName || 'User'}</Text>
+            </View>
+            
+            <TouchableOpacity
+              style={styles.settingsButton}
+              onPress={() => navigation.navigate('Settings')}
+            >
+              <Icon name="settings" size={24} color={PMAColors.white} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Account Address */}
+          <View style={styles.walletAddressContainer}>
+            <Text style={styles.walletAddressLabel}>Account Address</Text>
+            <TouchableOpacity style={styles.addressRow}>
+              <Text style={styles.walletAddress}>
+                {wallet ? formatAddress(wallet.address) : 'Loading...'}
+              </Text>
+              <Icon name="content-copy" size={18} color={PMAColors.white} />
+            </TouchableOpacity>
+          </View>
+        </LinearGradient>
+
+        {/* Balance Card */}
+        <View style={styles.balanceCard}>
+          <View style={styles.balanceHeader}>
+            <Text style={styles.balanceTitle}>Total Balance</Text>
+            <TouchableOpacity onPress={onRefresh}>
+              <Icon name="refresh" size={20} color={PMAColors.primary} />
+            </TouchableOpacity>
+          </View>
+          
+          <Text style={styles.totalBalance}>
+            ${formatBalance(getTotalBalance())}
           </Text>
+          
+          <View style={styles.balanceBreakdown}>
+            <View style={styles.balanceItem}>
+              <Text style={styles.currencyName}>USDT</Text>
+              <Text style={styles.currencyBalance}>
+                ${formatBalance(wallet?.balance.USDT || 0)}
+              </Text>
+            </View>
+            <View style={styles.balanceItem}>
+              <Text style={styles.currencyName}>USDC</Text>
+              <Text style={styles.currencyBalance}>
+                ${formatBalance(wallet?.balance.USDC || 0)}
+              </Text>
+            </View>
+            <View style={styles.balanceItem}>
+              <Text style={styles.currencyName}>AE Coin</Text>
+              <Text style={styles.currencyBalance}>
+                ${formatBalance(wallet?.balance.AECoin || 0)}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Quick Actions */}
+        <View style={styles.quickActions}>
           <TouchableOpacity
-            style={styles.profileButton}
-            onPress={() => navigation.navigate('Settings')}
+            style={styles.actionButton}
+            onPress={() => navigation.navigate('Send')}
+            activeOpacity={0.8}
           >
-            <Text style={styles.profileButtonText}>⚙️</Text>
+            <LinearGradient
+              colors={['#1976D2', '#1565C0']}
+              style={styles.actionButtonGradient}
+            >
+              <Icon name="send" size={24} color={PMAColors.white} />
+              <Text style={styles.actionButtonText}>Send</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => navigation.navigate('Receive')}
+            activeOpacity={0.8}
+          >
+            <LinearGradient
+              colors={['#388E3C', '#2E7D32']}
+              style={styles.actionButtonGradient}
+            >
+              <Icon name="call-received" size={24} color={PMAColors.white} />
+              <Text style={styles.actionButtonText}>Receive</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => navigation.navigate('Scan')}
+            activeOpacity={0.8}
+          >
+            <LinearGradient
+              colors={['#F57C00', '#EF6C00']}
+              style={styles.actionButtonGradient}
+            >
+              <Icon name="qr-code-scanner" size={24} color={PMAColors.white} />
+              <Text style={styles.actionButtonText}>Scan</Text>
+            </LinearGradient>
           </TouchableOpacity>
         </View>
 
-        {renderBalanceCard()}
-        {renderQuickActions()}
-        {renderRecentTransactions()}
+        {/* Bank Transfer Section */}
+        <View style={styles.bankTransferSection}>
+          <TouchableOpacity
+            style={styles.bankTransferButton}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              navigation.navigate('BankTransfer');
+            }}
+            activeOpacity={0.8}
+          >
+            <LinearGradient
+              colors={['#6A4C93', '#9A6ABA']}
+              style={styles.bankTransferGradient}
+            >
+              <Icon name="account-balance" size={24} color={PMAColors.white} />
+              <Text style={styles.bankTransferText}>Transfer to Bank Account</Text>
+              <Icon name="arrow-forward" size={20} color={PMAColors.white} />
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+
+        {/* Spending Analytics Section */}
+        <View style={styles.analyticsSection}>
+          <TouchableOpacity
+            style={styles.analyticsButton}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              navigation.navigate('SpendingAnalytics');
+            }}
+            activeOpacity={0.8}
+          >
+            <LinearGradient
+              colors={['#E91E63', '#AD1457']}
+              style={styles.analyticsGradient}
+            >
+              <Icon name="analytics" size={24} color={PMAColors.white} />
+              <Text style={styles.analyticsText}>View Spending Analytics</Text>
+              <Icon name="arrow-forward" size={20} color={PMAColors.white} />
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+
+        {/* Spending Goals Section */}
+        <View style={styles.goalsSection}>
+          <TouchableOpacity
+            style={styles.goalsButton}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              navigation.navigate('SpendingGoals');
+            }}
+            activeOpacity={0.8}
+          >
+            <LinearGradient
+              colors={['#9C27B0', '#7B1FA2']}
+              style={styles.goalsGradient}
+            >
+              <Icon name="track-changes" size={24} color={PMAColors.white} />
+              <Text style={styles.goalsText}>Manage Spending Goals</Text>
+              <Icon name="arrow-forward" size={20} color={PMAColors.white} />
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+
+        {/* Recent Transactions */}
+        <View style={styles.recentTransactions}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Recent Transactions</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('Transactions')}>
+              <Text style={styles.seeAllText}>See All</Text>
+            </TouchableOpacity>
+          </View>
+
+          {getRecentTransactions().length > 0 ? (
+            getRecentTransactions().map((transaction) => (
+              <View key={transaction.id} style={styles.transactionItem}>
+                <View style={styles.transactionIcon}>
+                  <Icon
+                    name={transaction.type === 'bank_transfer' ? 'account-balance' : transaction.type === 'send' ? 'arrow-upward' : 'arrow-downward'}
+                    size={20}
+                    color={transaction.type === 'bank_transfer' ? '#6A4C93' : transaction.type === 'send' ? PMAColors.error : PMAColors.success}
+                  />
+                </View>
+                
+                <View style={styles.transactionDetails}>
+                  <Text style={styles.transactionType}>
+                    {transaction.type === 'bank_transfer' 
+                      ? `Bank Transfer ${transaction.currency}`
+                      : transaction.type === 'send' 
+                        ? `Sent ${transaction.currency}` 
+                        : `Received ${transaction.currency}`
+                    }
+                  </Text>
+                  <Text style={styles.transactionAddress}>
+                    {transaction.type === 'bank_transfer'
+                      ? transaction.bankAccount 
+                        ? `To: ${transaction.bankAccount.bankName}`
+                        : 'Bank Transfer'
+                      : transaction.type === 'send' 
+                        ? `To: ${formatAddress(transaction.toAddress)}`
+                        : `From: ${formatAddress(transaction.fromAddress)}`
+                    }
+                  </Text>
+                </View>
+                
+                <View style={styles.transactionAmount}>
+                  <Text style={[
+                    styles.transactionAmountText,
+                    { color: transaction.type === 'send' ? PMAColors.error : PMAColors.success }
+                  ]}>
+                    {transaction.type === 'send' ? '-' : '+'}${formatBalance(transaction.amount)}
+                  </Text>
+                  <Text style={styles.transactionStatus}>
+                    {transaction.status}
+                  </Text>
+                </View>
+              </View>
+            ))
+          ) : (
+            <View style={styles.noTransactions}>
+              <Icon name="receipt" size={48} color={PMAColors.placeholder} />
+              <Text style={styles.noTransactionsText}>No transactions yet</Text>
+              <Text style={styles.noTransactionsSubtext}>
+                Start by sending or receiving funds
+              </Text>
+            </View>
+          )}
+        </View>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 };
 
@@ -269,197 +343,334 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
+  scrollContent: {
+    paddingBottom: 100, // Add padding to the bottom of the ScrollView
+  },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    paddingTop: 20,
     paddingHorizontal: 20,
-    paddingTop: 50,
-    paddingBottom: 20,
-    backgroundColor: PMAColors.primary,
+    paddingBottom: 30,
   },
-  greeting: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: PMAColors.white,
+  logoSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingVertical: 10,
   },
-  profileButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  logoContainer: {
+    width: 65,
+    height: 65,
+    borderRadius: 32.5,
     backgroundColor: PMAColors.white,
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: 15,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 215, 0, 0.3)',
+    shadowColor: PMAColors.black,
+    shadowOffset: {
+      width: 0,
+      height: 6,
+    },
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 12,
   },
-  profileButtonText: {
-    fontSize: 20,
+  logoImage: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
   },
-  balanceCard: {
-    margin: 20,
-    marginTop: -10,
-    borderRadius: 15,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+  brandInfo: {
+    flex: 1,
   },
-  balanceHeader: {
+  brandName: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: PMAColors.white,
+    marginBottom: 2,
+  },
+  brandSubtitle: {
+    fontSize: 12,
+    color: PMAColors.white,
+    opacity: 0.9,
+  },
+  headerContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 20,
   },
-  balanceTitle: {
+  userInfo: {
+    flex: 1,
+  },
+  welcomeText: {
     fontSize: 16,
     color: PMAColors.white,
     opacity: 0.9,
   },
-  eyeButton: {
-    padding: 5,
-  },
-  eyeIcon: {
-    fontSize: 20,
-  },
-  balanceAmount: {
-    fontSize: 32,
+  userName: {
+    fontSize: 24,
     fontWeight: 'bold',
     color: PMAColors.white,
-    marginBottom: 15,
   },
-  walletInfo: {
-    marginBottom: 20,
+  settingsButton: {
+    padding: 8,
   },
-  walletLabel: {
+  walletAddressContainer: {
+    marginTop: 10,
+  },
+  walletAddressLabel: {
     fontSize: 14,
     color: PMAColors.white,
     opacity: 0.8,
     marginBottom: 5,
   },
+  addressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   walletAddress: {
     fontSize: 16,
     color: PMAColors.white,
     fontWeight: '500',
+    marginRight: 10,
   },
-  currencyBalances: {
+  balanceCard: {
+    backgroundColor: PMAColors.white,
+    margin: 20,
+    borderRadius: 15,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  balanceHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  balanceTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: PMAColors.text,
+  },
+  totalBalance: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: PMAColors.primary,
+    marginBottom: 20,
+  },
+  balanceBreakdown: {
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
-  currencyItem: {
+  balanceItem: {
     alignItems: 'center',
   },
-  currencyLabel: {
+  currencyName: {
     fontSize: 12,
-    color: PMAColors.white,
-    opacity: 0.8,
-    marginBottom: 4,
+    color: PMAColors.textSecondary,
+    marginBottom: 5,
   },
-  currencyValue: {
+  currencyBalance: {
     fontSize: 14,
-    color: PMAColors.white,
-    fontWeight: '500',
-  },
-  quickActionsContainer: {
-    paddingHorizontal: 20,
-    marginBottom: 20,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '600',
     color: PMAColors.text,
-    marginBottom: 15,
   },
   quickActions: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    marginBottom: 30,
   },
-  quickAction: {
+  actionButton: {
+    flex: 1,
+    marginHorizontal: Platform.OS === 'ios' ? 6 : 4,
+    borderRadius: Platform.OS === 'ios' ? 18 : 15,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: Platform.OS === 'ios' ? 4 : 2,
+    },
+    shadowOpacity: Platform.OS === 'ios' ? 0.25 : 0.15,
+    shadowRadius: Platform.OS === 'ios' ? 6 : 4,
+    elevation: Platform.OS === 'android' ? 8 : 0,
+  },
+  actionButtonGradient: {
+    paddingVertical: Platform.OS === 'ios' ? 22 : 20,
+    paddingHorizontal: 15,
     alignItems: 'center',
-    width: (width - 60) / 4,
-  },
-  quickActionIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: PMAColors.primary,
     justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
+    minHeight: 70,
   },
-  quickActionIconText: {
-    fontSize: 24,
-  },
-  quickActionText: {
-    fontSize: 12,
-    color: PMAColors.text,
+  actionButtonText: {
+    color: PMAColors.white,
+    fontSize: Platform.OS === 'ios' ? 15 : 14,
+    fontWeight: Platform.OS === 'ios' ? '700' : '600',
+    marginTop: 8,
     textAlign: 'center',
   },
-  transactionsContainer: {
+  bankTransferSection: {
     paddingHorizontal: 20,
+    marginBottom: 30,
   },
-  transactionHeader: {
+  bankTransferButton: {
+    borderRadius: Platform.OS === 'ios' ? 18 : 15,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: Platform.OS === 'ios' ? 4 : 2,
+    },
+    shadowOpacity: Platform.OS === 'ios' ? 0.25 : 0.15,
+    shadowRadius: Platform.OS === 'ios' ? 6 : 4,
+    elevation: Platform.OS === 'android' ? 8 : 0,
+  },
+  bankTransferGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: Platform.OS === 'ios' ? 18 : 16,
+    paddingHorizontal: 20,
+    minHeight: 60,
+  },
+  bankTransferText: {
+    flex: 1,
+    color: PMAColors.white,
+    fontSize: Platform.OS === 'ios' ? 17 : 16,
+    fontWeight: Platform.OS === 'ios' ? '700' : '600',
+    marginLeft: 12,
+    textAlign: 'left',
+  },
+  analyticsSection: {
+    paddingHorizontal: 20,
+    marginBottom: 30,
+  },
+  analyticsButton: {
+    borderRadius: Platform.OS === 'ios' ? 18 : 15,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: Platform.OS === 'ios' ? 4 : 2,
+    },
+    shadowOpacity: Platform.OS === 'ios' ? 0.25 : 0.15,
+    shadowRadius: Platform.OS === 'ios' ? 6 : 4,
+    elevation: Platform.OS === 'android' ? 8 : 0,
+  },
+  analyticsGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: Platform.OS === 'ios' ? 18 : 16,
+    paddingHorizontal: 20,
+    minHeight: 60,
+  },
+  analyticsText: {
+    flex: 1,
+    color: PMAColors.white,
+    fontSize: Platform.OS === 'ios' ? 17 : 16,
+    fontWeight: Platform.OS === 'ios' ? '700' : '600',
+    marginLeft: 12,
+    textAlign: 'left',
+  },
+  goalsSection: {
+    paddingHorizontal: 20,
+    marginBottom: 30,
+  },
+  goalsButton: {
+    borderRadius: Platform.OS === 'ios' ? 18 : 15,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: Platform.OS === 'ios' ? 4 : 2,
+    },
+    shadowOpacity: Platform.OS === 'ios' ? 0.25 : 0.15,
+    shadowRadius: Platform.OS === 'ios' ? 6 : 4,
+    elevation: Platform.OS === 'android' ? 8 : 0,
+  },
+  goalsGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: Platform.OS === 'ios' ? 18 : 16,
+    paddingHorizontal: 20,
+    minHeight: 60,
+  },
+  goalsText: {
+    flex: 1,
+    color: PMAColors.white,
+    fontSize: Platform.OS === 'ios' ? 17 : 16,
+    fontWeight: Platform.OS === 'ios' ? '700' : '600',
+    marginLeft: 12,
+    textAlign: 'left',
+  },
+  recentTransactions: {
+    paddingHorizontal: 20,
+    marginBottom: 30,
+  },
+  sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 15,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: PMAColors.text,
   },
   seeAllText: {
     fontSize: 14,
     color: PMAColors.primary,
     fontWeight: '500',
   },
-  noTransactions: {
-    alignItems: 'center',
-    paddingVertical: 40,
-  },
-  noTransactionsText: {
-    fontSize: 16,
-    color: PMAColors.gray,
-    marginBottom: 5,
-  },
-  noTransactionsSubtext: {
-    fontSize: 14,
-    color: PMAColors.gray,
-    opacity: 0.8,
-  },
   transactionItem: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: PMAColors.white,
     padding: 15,
-    marginBottom: 10,
     borderRadius: 10,
+    marginBottom: 10,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
   },
   transactionIcon: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: PMAColors.secondary,
+    backgroundColor: PMAColors.background,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 15,
   },
-  transactionIconText: {
-    fontSize: 20,
-  },
-  transactionInfo: {
+  transactionDetails: {
     flex: 1,
   },
-  transactionTitle: {
+  transactionType: {
     fontSize: 16,
     fontWeight: '500',
     color: PMAColors.text,
-    marginBottom: 4,
+    marginBottom: 3,
   },
   transactionAddress: {
-    fontSize: 14,
-    color: PMAColors.gray,
+    fontSize: 12,
+    color: PMAColors.textSecondary,
   },
   transactionAmount: {
     alignItems: 'flex-end',
@@ -467,18 +678,28 @@ const styles = StyleSheet.create({
   transactionAmountText: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 2,
-  },
-  sendAmount: {
-    color: PMAColors.error,
-  },
-  receiveAmount: {
-    color: PMAColors.success,
+    marginBottom: 3,
   },
   transactionStatus: {
     fontSize: 12,
-    color: PMAColors.gray,
+    color: PMAColors.textSecondary,
     textTransform: 'capitalize',
+  },
+  noTransactions: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  noTransactionsText: {
+    fontSize: 18,
+    fontWeight: '500',
+    color: PMAColors.text,
+    marginTop: 15,
+    marginBottom: 5,
+  },
+  noTransactionsSubtext: {
+    fontSize: 14,
+    color: PMAColors.textSecondary,
+    textAlign: 'center',
   },
 });
 

@@ -1,10 +1,9 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { ethers } from 'ethers';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import * as bip39 from 'bip39';
 import * as SecureStore from 'expo-secure-store';
 import { Wallet, Transaction, WalletContextType } from '../types';
-import { WalletService } from '../services/WalletService';
 import { BlockchainService } from '../services/BlockchainService';
+import { WalletService } from '../services/WalletService';
 
 const WalletContext = createContext<WalletContextType | undefined>(undefined);
 
@@ -23,37 +22,46 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     checkExistingWallet();
   }, []);
 
-  const checkExistingWallet = async () => {
+  const checkExistingWallet = useCallback(async () => {
     try {
-      const existingWallet = await SecureStore.getItemAsync('pma_wallet');
+      const existingWallet = await WalletService.getStoredWallet();
       if (existingWallet) {
-        const walletData = JSON.parse(existingWallet);
-        setWallet(walletData);
+        setWallet(existingWallet);
         setIsWalletCreated(true);
-        // Load transactions
-        await loadTransactions(walletData.address);
+        
+        // Load transactions with error handling
+        try {
+          await loadTransactions(existingWallet.address);
+        } catch (error) {
+          console.warn('Failed to load transactions on startup:', error);
+        }
       }
     } catch (error) {
       console.error('Error checking existing wallet:', error);
     }
-  };
+  }, []);
 
-  const createWallet = async (mnemonic?: string): Promise<Wallet> => {
+  const createWallet = useCallback(async (mnemonic?: string): Promise<Wallet> => {
     try {
       setIsLoading(true);
       
       // Generate or use provided mnemonic
       const walletMnemonic = mnemonic || bip39.generateMnemonic();
       
-      // Create wallet from mnemonic
-      const ethWallet = ethers.Wallet.fromMnemonic(walletMnemonic);
+      // Validate mnemonic
+      if (!await WalletService.validateMnemonic(walletMnemonic)) {
+        throw new Error('Invalid mnemonic phrase');
+      }
+      
+      // Create wallet from mnemonic using ethers v6
+      const ethWallet = await WalletService.getWalletFromMnemonic(walletMnemonic);
       
       const newWallet: Wallet = {
         address: ethWallet.address,
         balance: {
           USDT: 0,
           USDC: 0,
-          AECoin: 0,
+          AECoin: 100, // Mock balance for testing
         },
         transactions: [],
         mnemonic: walletMnemonic,
@@ -61,14 +69,18 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
       };
 
       // Store wallet securely
-      await SecureStore.setItemAsync('pma_wallet', JSON.stringify(newWallet));
-      await SecureStore.setItemAsync('pma_mnemonic', walletMnemonic);
+      await WalletService.securelyStoreWallet(newWallet);
       
       setWallet(newWallet);
       setIsWalletCreated(true);
       
-      // Initialize blockchain services
-      await BlockchainService.initializeWallet(ethWallet);
+      // Initialize blockchain services with error handling
+      try {
+        await BlockchainService.initializeWallet(ethWallet);
+      } catch (error) {
+        console.warn('Failed to initialize blockchain service:', error);
+        // Continue in offline mode
+      }
       
       return newWallet;
     } catch (error) {
@@ -77,26 +89,26 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const importWallet = async (mnemonic: string): Promise<Wallet> => {
+  const importWallet = useCallback(async (mnemonic: string): Promise<Wallet> => {
     try {
       setIsLoading(true);
       
       // Validate mnemonic
-      if (!bip39.validateMnemonic(mnemonic)) {
+      if (!await WalletService.validateMnemonic(mnemonic)) {
         throw new Error('Invalid mnemonic phrase');
       }
 
-      // Create wallet from mnemonic
-      const ethWallet = ethers.Wallet.fromMnemonic(mnemonic);
+      // Create wallet from mnemonic using ethers v6
+      const ethWallet = await WalletService.getWalletFromMnemonic(mnemonic);
       
       const importedWallet: Wallet = {
         address: ethWallet.address,
         balance: {
           USDT: 0,
           USDC: 0,
-          AECoin: 0,
+          AECoin: 100, // Mock balance for testing
         },
         transactions: [],
         mnemonic: mnemonic,
@@ -104,17 +116,25 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
       };
 
       // Store wallet securely
-      await SecureStore.setItemAsync('pma_wallet', JSON.stringify(importedWallet));
-      await SecureStore.setItemAsync('pma_mnemonic', mnemonic);
+      await WalletService.securelyStoreWallet(importedWallet);
       
       setWallet(importedWallet);
       setIsWalletCreated(true);
       
-      // Initialize blockchain services
-      await BlockchainService.initializeWallet(ethWallet);
+      // Initialize blockchain services with error handling
+      try {
+        await BlockchainService.initializeWallet(ethWallet);
+      } catch (error) {
+        console.warn('Failed to initialize blockchain service:', error);
+        // Continue in offline mode
+      }
       
-      // Load existing transactions
-      await loadTransactions(importedWallet.address);
+      // Load existing transactions with error handling
+      try {
+        await loadTransactions(importedWallet.address);
+      } catch (error) {
+        console.warn('Failed to load transactions:', error);
+      }
       
       return importedWallet;
     } catch (error) {
@@ -123,9 +143,9 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const getBalance = async (currency: 'USDT' | 'USDC' | 'AECoin'): Promise<number> => {
+  const getBalance = useCallback(async (currency: 'USDT' | 'USDC' | 'AECoin'): Promise<number> => {
     if (!wallet) {
       throw new Error('No wallet available');
     }
@@ -143,22 +163,36 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
       };
       
       setWallet(updatedWallet);
-      await SecureStore.setItemAsync('pma_wallet', JSON.stringify(updatedWallet));
+      await WalletService.securelyStoreWallet(updatedWallet);
       
       return balance;
     } catch (error) {
       console.error(`Error getting ${currency} balance:`, error);
-      throw error;
+      // Return current balance from state as fallback
+      return wallet.balance[currency] || 0;
     }
-  };
+  }, [wallet]);
 
-  const sendTransaction = async (
+  const sendTransaction = useCallback(async (
     to: string,
     amount: number,
     currency: 'USDT' | 'USDC' | 'AECoin'
   ): Promise<string> => {
     if (!wallet) {
       throw new Error('No wallet available');
+    }
+
+    // Validate inputs
+    if (!WalletService.isValidAddress(to)) {
+      throw new Error('Invalid recipient address');
+    }
+
+    if (amount <= 0) {
+      throw new Error('Amount must be greater than 0');
+    }
+
+    if (amount > wallet.balance[currency]) {
+      throw new Error('Insufficient balance');
     }
 
     try {
@@ -193,13 +227,28 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
         ...wallet,
         balance: {
           ...wallet.balance,
-          [currency]: wallet.balance[currency] - amount,
+          [currency]: Math.max(0, wallet.balance[currency] - amount),
         },
         transactions: updatedTransactions,
       };
       
       setWallet(updatedWallet);
-      await SecureStore.setItemAsync('pma_wallet', JSON.stringify(updatedWallet));
+      await WalletService.securelyStoreWallet(updatedWallet);
+      
+      // Wait for transaction confirmation in the background
+      BlockchainService.waitForTransaction(txHash, 60000).then((confirmed) => {
+        if (confirmed) {
+          setTransactions(prev => prev.map(tx => 
+            tx.id === txHash ? { ...tx, status: 'confirmed' } : tx
+          ));
+        } else {
+          setTransactions(prev => prev.map(tx => 
+            tx.id === txHash ? { ...tx, status: 'failed' } : tx
+          ));
+        }
+      }).catch(error => {
+        console.error('Error waiting for transaction confirmation:', error);
+      });
       
       return txHash;
     } catch (error) {
@@ -208,18 +257,22 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [wallet, transactions]);
 
-  const refreshWallet = async () => {
+  const refreshWallet = useCallback(async () => {
     if (!wallet) return;
 
     try {
-      // Refresh all balances
-      const balances = await Promise.all([
-        getBalance('USDT'),
-        getBalance('USDC'),
-        getBalance('AECoin'),
-      ]);
+      setIsLoading(true);
+      
+      // Refresh all balances with error handling
+      const balancePromises = [
+        getBalance('USDT').catch(() => wallet.balance.USDT),
+        getBalance('USDC').catch(() => wallet.balance.USDC),
+        getBalance('AECoin').catch(() => wallet.balance.AECoin),
+      ];
+
+      const balances = await Promise.all(balancePromises);
 
       // Update wallet with new balances
       const updatedWallet = {
@@ -232,34 +285,66 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
       };
 
       setWallet(updatedWallet);
-      await SecureStore.setItemAsync('pma_wallet', JSON.stringify(updatedWallet));
+      await WalletService.securelyStoreWallet(updatedWallet);
       
-      // Refresh transactions
-      await loadTransactions(wallet.address);
+      // Refresh transactions with error handling
+      try {
+        await loadTransactions(wallet.address);
+      } catch (error) {
+        console.warn('Failed to refresh transactions:', error);
+      }
     } catch (error) {
       console.error('Error refreshing wallet:', error);
+    } finally {
+      setIsLoading(false);
     }
-  };
+  }, [wallet, getBalance]);
 
-  const loadTransactions = async (address: string) => {
+  const loadTransactions = useCallback(async (address: string) => {
     try {
       const txHistory = await BlockchainService.getTransactionHistory(address);
       setTransactions(txHistory);
     } catch (error) {
       console.error('Error loading transactions:', error);
+      // Keep existing transactions if loading fails
     }
-  };
+  }, []);
 
-  const value: WalletContextType = {
+  const clearWalletData = useCallback(async () => {
+    try {
+      await WalletService.clearWalletData();
+      setWallet(null);
+      setIsWalletCreated(false);
+      setTransactions([]);
+    } catch (error) {
+      console.error('Error clearing wallet data:', error);
+      throw error;
+    }
+  }, []);
+
+  const value: WalletContextType = useMemo(() => ({
     wallet,
     isWalletCreated,
+    isLoading,
     createWallet,
     importWallet,
     getBalance,
     sendTransaction,
     refreshWallet,
     transactions,
-  };
+    clearWalletData,
+  }), [
+    wallet,
+    isWalletCreated,
+    isLoading,
+    createWallet,
+    importWallet,
+    getBalance,
+    sendTransaction,
+    refreshWallet,
+    transactions,
+    clearWalletData,
+  ]);
 
   return (
     <WalletContext.Provider value={value}>

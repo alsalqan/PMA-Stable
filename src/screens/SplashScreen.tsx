@@ -3,16 +3,16 @@ import {
   View,
   Text,
   StyleSheet,
-  Image,
   Dimensions,
   StatusBar,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { PMAColors } from '../theme';
 import { useAuth } from '../contexts/AuthContext';
 import { useWallet } from '../contexts/WalletContext';
 
-const { width, height } = Dimensions.get('window');
+const { height } = Dimensions.get('window');
 
 interface SplashScreenProps {
   navigation: any;
@@ -31,11 +31,11 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ navigation }) => {
   }, []);
 
   const checkAppState = () => {
-    if (isAuthenticated && isWalletCreated) {
-      navigation.replace('Main');
-    } else if (isAuthenticated && !isWalletCreated) {
+    if (isAuthenticated) {
+      // User is already logged in, go to main app
       navigation.replace('Main');
     } else {
+      // User is not authenticated, start onboarding flow
       navigation.replace('Onboarding');
     }
   };
@@ -48,16 +48,18 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ navigation }) => {
         style={styles.gradient}
       >
         <View style={styles.logoContainer}>
-          {/* PMA Logo Placeholder */}
+          {/* PMA Logo */}
           <View style={styles.logoPlaceholder}>
-            <View style={styles.circularLogo}>
-              <Text style={styles.logoText}>PMA</Text>
-            </View>
+            <Image
+              source={require('../../assets/Pma.png')}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
           </View>
           
-          <Text style={styles.appTitle}>PMA Wallet</Text>
+          <Text style={styles.appTitle}>PMA Digital Banking</Text>
           <Text style={styles.appSubtitle}>Palestine Monetary Authority</Text>
-          <Text style={styles.appTagline}>Non-Custodial Digital Wallet</Text>
+          <Text style={styles.appTagline}>Secure Digital Banking Solution</Text>
         </View>
 
         <View style={styles.loadingContainer}>
@@ -92,6 +94,11 @@ const styles = StyleSheet.create({
   },
   logoPlaceholder: {
     marginBottom: 30,
+    alignItems: 'center',
+  },
+  logoImage: {
+    width: 150,
+    height: 150,
   },
   circularLogo: {
     width: 150,

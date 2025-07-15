@@ -16,30 +16,44 @@ export class WalletService {
     try {
       return bip39.validateMnemonic(mnemonic);
     } catch (error) {
+      console.error('Error validating mnemonic:', error);
       return false;
     }
   }
 
-  static async getWalletFromMnemonic(mnemonic: string): Promise<ethers.Wallet> {
-    if (!this.validateMnemonic(mnemonic)) {
+  static async getWalletFromMnemonic(mnemonic: string): Promise<ethers.HDNodeWallet> {
+    if (!await this.validateMnemonic(mnemonic)) {
       throw new Error('Invalid mnemonic phrase');
     }
     
-    return ethers.Wallet.fromMnemonic(mnemonic);
+    try {
+      // Using ethers v6 proper method to create wallet from mnemonic
+      const mnemonicObject = ethers.Mnemonic.fromPhrase(mnemonic);
+      return ethers.HDNodeWallet.fromMnemonic(mnemonicObject);
+    } catch (error) {
+      console.error('Error creating wallet from mnemonic:', error);
+      throw new Error('Failed to create wallet from mnemonic');
+    }
   }
 
   static async securelyStoreWallet(wallet: Wallet): Promise<void> {
     try {
-      await SecureStore.setItemAsync('pma_wallet', JSON.stringify(wallet));
+      const tasks = [
+        SecureStore.setItemAsync('pma_wallet', JSON.stringify(wallet)),
+      ];
+      
       if (wallet.mnemonic) {
-        await SecureStore.setItemAsync('pma_mnemonic', wallet.mnemonic);
+        tasks.push(SecureStore.setItemAsync('pma_mnemonic', wallet.mnemonic));
       }
+      
       if (wallet.privateKey) {
-        await SecureStore.setItemAsync('pma_private_key', wallet.privateKey);
+        tasks.push(SecureStore.setItemAsync('pma_private_key', wallet.privateKey));
       }
+      
+      await Promise.all(tasks);
     } catch (error) {
       console.error('Error storing wallet securely:', error);
-      throw error;
+      throw new Error('Failed to store wallet securely');
     }
   }
 
@@ -67,9 +81,13 @@ export class WalletService {
 
   static async clearWalletData(): Promise<void> {
     try {
-      await SecureStore.deleteItemAsync('pma_wallet');
-      await SecureStore.deleteItemAsync('pma_mnemonic');
-      await SecureStore.deleteItemAsync('pma_private_key');
+      const keys = ['pma_wallet', 'pma_mnemonic', 'pma_private_key'];
+      const tasks = keys.map(key => 
+        SecureStore.deleteItemAsync(key).catch(err => 
+          console.warn(`Failed to delete ${key}:`, err)
+        )
+      );
+      await Promise.all(tasks);
     } catch (error) {
       console.error('Error clearing wallet data:', error);
     }
@@ -82,6 +100,7 @@ export class WalletService {
   }
 
   static formatBalance(balance: number, decimals: number = 4): string {
+    if (isNaN(balance)) return '0.0000';
     return balance.toFixed(decimals);
   }
 
@@ -91,13 +110,18 @@ export class WalletService {
 
   static isValidAddress(address: string): boolean {
     try {
-      return ethers.utils.isAddress(address);
+      return ethers.isAddress(address);
     } catch (error) {
+      console.error('Error validating address:', error);
       return false;
     }
   }
 
   static generateQRCodeData(address: string, amount?: number, currency?: string): string {
+    if (!this.isValidAddress(address)) {
+      throw new Error('Invalid address for QR code generation');
+    }
+    
     let qrData = `ethereum:${address}`;
     
     if (amount && currency) {
@@ -121,14 +145,15 @@ export class WalletService {
         if (paramsPart) {
           const params = new URLSearchParams(paramsPart);
           if (params.has('amount')) {
-            result.amount = parseFloat(params.get('amount') || '0');
+            const amount = parseFloat(params.get('amount') || '0');
+            if (!isNaN(amount)) result.amount = amount;
           }
           if (params.has('currency')) {
             result.currency = params.get('currency');
           }
         }
         
-        return result;
+        return this.isValidAddress(result.address) ? result : null;
       }
       
       // Handle plain address
@@ -144,15 +169,20 @@ export class WalletService {
   }
 
   static async backupWallet(wallet: Wallet): Promise<string> {
-    // Generate a backup string that includes essential wallet information
-    const backupData = {
-      address: wallet.address,
-      mnemonic: wallet.mnemonic,
-      timestamp: new Date().toISOString(),
-      version: '1.0',
-    };
-    
-    return JSON.stringify(backupData);
+    try {
+      // Generate a backup string that includes essential wallet information
+      const backupData = {
+        address: wallet.address,
+        mnemonic: wallet.mnemonic,
+        timestamp: new Date().toISOString(),
+        version: '2.0', // Updated version for ethers v6
+      };
+      
+      return JSON.stringify(backupData);
+    } catch (error) {
+      console.error('Error creating wallet backup:', error);
+      throw new Error('Failed to create wallet backup');
+    }
   }
 
   static async restoreWalletFromBackup(backupString: string): Promise<Wallet | null> {
@@ -160,16 +190,16 @@ export class WalletService {
       const backupData = JSON.parse(backupString);
       
       if (!backupData.mnemonic || !backupData.address) {
-        throw new Error('Invalid backup data');
+        throw new Error('Invalid backup data: missing mnemonic or address');
       }
       
       // Validate mnemonic
-      if (!this.validateMnemonic(backupData.mnemonic)) {
+      if (!await this.validateMnemonic(backupData.mnemonic)) {
         throw new Error('Invalid mnemonic in backup');
       }
       
-      // Recreate wallet from mnemonic
-      const ethWallet = ethers.Wallet.fromMnemonic(backupData.mnemonic);
+      // Recreate wallet from mnemonic using ethers v6
+      const ethWallet = await this.getWalletFromMnemonic(backupData.mnemonic);
       
       // Verify address matches
       if (ethWallet.address !== backupData.address) {
@@ -191,7 +221,7 @@ export class WalletService {
       return restoredWallet;
     } catch (error) {
       console.error('Error restoring wallet from backup:', error);
-      return null;
+      throw new Error('Failed to restore wallet from backup');
     }
   }
 
@@ -214,11 +244,29 @@ export class WalletService {
     amount: number,
     currency: 'USDT' | 'USDC' | 'AECoin'
   ): Promise<number> {
-    // This is a simplified fee calculation
-    // In production, you would calculate based on current gas prices
-    const baseFee = 0.001; // Base fee in ETH
-    const currencyMultiplier = currency === 'AECoin' ? 0.5 : 1;
-    
-    return baseFee * currencyMultiplier;
+    try {
+      // Enhanced fee calculation for ethers v6
+      const baseFee = 0.001; // Base fee in ETH
+      const currencyMultiplier = currency === 'AECoin' ? 0.5 : 1;
+      
+      // Add amount-based fee scaling
+      const amountMultiplier = amount > 1000 ? 1.2 : 1.0;
+      
+      return baseFee * currencyMultiplier * amountMultiplier;
+    } catch (error) {
+      console.error('Error calculating transaction fee:', error);
+      return 0.001; // Default fee
+    }
+  }
+
+  static async estimateGasPrice(): Promise<string> {
+    try {
+      // Mock gas price estimation - in production, you'd call a real provider
+      const gasPrice = Math.floor(Math.random() * 50) + 10; // 10-60 gwei
+      return `${gasPrice} gwei`;
+    } catch (error) {
+      console.error('Error estimating gas price:', error);
+      return '20 gwei'; // Default gas price
+    }
   }
 } 

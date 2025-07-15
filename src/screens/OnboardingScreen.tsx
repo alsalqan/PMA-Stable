@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,9 +9,10 @@ import {
   FlatList,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 import { PMAColors } from '../theme';
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
 interface OnboardingScreenProps {
   navigation: any;
@@ -22,12 +23,13 @@ interface OnboardingSlide {
   title: string;
   description: string;
   icon: string;
+  isIconComponent?: boolean;
 }
 
 const onboardingData: OnboardingSlide[] = [
   {
     id: '1',
-    title: 'Non-Custodial Wallet',
+    title: 'Digital Banking',
     description: 'Your private keys remain secure on your device. You have full control over your funds.',
     icon: '🔐',
   },
@@ -41,7 +43,8 @@ const onboardingData: OnboardingSlide[] = [
     id: '3',
     title: 'QR Code Payments',
     description: 'Send and receive payments instantly by scanning QR codes.',
-    icon: '📱',
+    icon: 'qr-code-scanner',
+    isIconComponent: true,
   },
   {
     id: '4',
@@ -53,23 +56,30 @@ const onboardingData: OnboardingSlide[] = [
 
 const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ navigation }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
+  const flatListRef = useRef<FlatList>(null);
 
   const handleNext = () => {
     if (currentIndex < onboardingData.length - 1) {
-      setCurrentIndex(currentIndex + 1);
+      const nextIndex = currentIndex + 1;
+      setCurrentIndex(nextIndex);
+      flatListRef.current?.scrollToIndex({ index: nextIndex, animated: true });
     } else {
-      navigation.navigate('Signup');
+      navigation.navigate('Login');
     }
   };
 
   const handleSkip = () => {
-    navigation.navigate('Signup');
+    navigation.navigate('Login');
   };
 
   const renderSlide = ({ item }: { item: OnboardingSlide }) => (
     <View style={styles.slide}>
       <View style={styles.iconContainer}>
-        <Text style={styles.icon}>{item.icon}</Text>
+        {item.isIconComponent ? (
+          <Icon name={item.icon} size={60} color={PMAColors.primary} />
+        ) : (
+          <Text style={styles.icon}>{item.icon}</Text>
+        )}
       </View>
       <Text style={styles.title}>{item.title}</Text>
       <Text style={styles.description}>{item.description}</Text>
@@ -98,7 +108,7 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ navigation }) => {
         style={styles.gradient}
       >
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>PMA Wallet</Text>
+          <Text style={styles.headerTitle}>PMA Digital Banking</Text>
           <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>
             <Text style={styles.skipText}>Skip</Text>
           </TouchableOpacity>
@@ -106,6 +116,7 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ navigation }) => {
 
         <View style={styles.content}>
           <FlatList
+            ref={flatListRef}
             data={onboardingData}
             renderItem={renderSlide}
             keyExtractor={(item) => item.id}
@@ -116,12 +127,13 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ navigation }) => {
               const index = Math.round(event.nativeEvent.contentOffset.x / width);
               setCurrentIndex(index);
             }}
-            getItemLayout={(data, index) => ({
+            getItemLayout={(_, index) => ({
               length: width,
               offset: width * index,
               index,
             })}
-            initialScrollIndex={currentIndex}
+            initialScrollIndex={0}
+            scrollEnabled={true}
           />
         </View>
 
